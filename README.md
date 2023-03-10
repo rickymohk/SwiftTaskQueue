@@ -28,14 +28,20 @@ let package = Package(
 ```swift
 import SwiftTaskQueue
 
-let taskQueue = TaskQueue()
-
 // Call from non-async context, without waiting for result
-taskQueue.dispatch {
-    // your async code here
+func doSomething(taskQueue:TaskQueue)
+{
+    taskQueue.dispatch {
+        // your async code here
+    }
 }
 
 Task{
+    
+    let taskQueue = await TaskQueue()
+    
+    doSomethong(taskQueue)
+
     // Call from async context, waiting for result
     let result = try? await taskQueue.dispatch {
         // your async code here
