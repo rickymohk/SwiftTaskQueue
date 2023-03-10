@@ -1,4 +1,4 @@
-public actor TaskQueue{
+public class TaskQueue{
     private class PendingTask{
         let label:String?
         
@@ -36,16 +36,15 @@ public actor TaskQueue{
     
     private var scope: Task<Void,Never>?
     
-    private func initPendingTasks()
+    private var initTask: Task<Void,Never>?
+    
+    private func initScope(initContinuation:CheckedContinuation<Void,Never>)
     {
         pendingTasks = AsyncStream{ continuation in
             pendingTasksContinuation = continuation
-//            print("pendingTasksContinuation initialized")
+            print("pendingTasksContinuation initialized")
+            initContinuation.resume()
         }
-    }
-    
-    private func initScope()
-    {
         scope = Task{
             guard let pendingTasks = pendingTasks else { return }
             for await pendingTask in pendingTasks
@@ -95,64 +94,76 @@ public actor TaskQueue{
         }
     }
     
-    public init(label: String? = nil) async{
-        self.label = label ?? "TaskQueue"
-        initPendingTasks()
-        initScope()
-    }
-    
-    public nonisolated func close()
-    {
-        Task{
-            if let scope = await scope,
-               !scope.isCancelled
-            {
-                scope.cancel()
-            }
+    public init(label: String? = nil){
+        self.label = label
+        initTask = Task{
+            await withCheckedContinuation{ initScope(initContinuation: $0) }
+            initTask = nil
         }
     }
     
-    public nonisolated func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
+    public func close()
     {
-        Task{
-            await pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
+        if let scope = scope,
+           !scope.isCancelled
+        {
+            scope.cancel()
         }
     }
     
-    public nonisolated func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
+    public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-        return (try await withCheckedThrowingContinuation({ continuation in
+        if let initTask = initTask
+        {
             Task{
-                await pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: continuation, block: block))
+                await initTask.value
+                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
             }
+        }
+        else
+        {
+            pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
+        }
+    }
+    
+    public func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
+    {
+        if let initTask = initTask
+        {
+            await initTask.value
+        }
+        return (try await withCheckedThrowingContinuation({ continuation in
+            pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: continuation, block: block))
         })) as! T
     }
     
-    public nonisolated func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
+    public func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
     {
         let anyStream = AsyncThrowingStream<Any,Error> { continuation in
-            Task{
-                await pendingTasksContinuation?.yield(StreamTask(label: label, continuation: continuation, block: { anyContinuation in
-                    Task{
-                        do
+            pendingTasksContinuation?.yield(StreamTask(label: label, continuation: continuation, block: { anyContinuation in
+                Task{
+                    do
+                    {
+                        for try await element in AsyncThrowingStream(T.self,block)
                         {
-                            for try await element in AsyncThrowingStream(T.self,block)
-                            {
-                                anyContinuation.yield(element)
-                            }
-                            anyContinuation.finish()
+                            anyContinuation.yield(element)
                         }
-                        catch
-                        {
-                            anyContinuation.finish(throwing: error)
-                        }
+                        anyContinuation.finish()
                     }
-                }))
-            }
+                    catch
+                    {
+                        anyContinuation.finish(throwing: error)
+                    }
+                }
+            }))
         }
         return AsyncThrowingStream<T,Error> { typedContinuation in
             Task
             {
+                if let initTask = initTask
+                {
+                    await initTask.value
+                }
                 do{
                     for try await element in anyStream
                     {
