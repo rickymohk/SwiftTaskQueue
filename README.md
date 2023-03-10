@@ -17,7 +17,7 @@ import PackageDescription
 
 let package = Package(
     dependencies: [
-        .package(url: "https://github.com/rickymohk/SwiftTaskQueue.git", .branch("master"))
+        .package(url: "https://github.com/rickymohk/SwiftTaskQueue.git", .branch("main"))
     ]
 )
 ```
