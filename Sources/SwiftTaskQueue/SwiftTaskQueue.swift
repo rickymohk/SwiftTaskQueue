@@ -2,8 +2,8 @@ public actor TaskQueue{
     private class PendingTask{
         let label:String?
         
-        init(tag: String? = nil) {
-            self.label = tag
+        init(label: String? = nil) {
+            self.label = label
         }
     }
     private class AsyncTask : PendingTask {
@@ -13,7 +13,7 @@ public actor TaskQueue{
         init(label: String?, continuation: CheckedContinuation<Any, Error>?, block: @escaping () async throws -> Any) {
             self.continuation = continuation
             self.block = block
-            super.init(tag: label)
+            super.init(label: label)
         }
     }
     
@@ -24,11 +24,11 @@ public actor TaskQueue{
         init(label: String?, continuation: AsyncThrowingStream<Any,Error>.Continuation, block: @escaping (AsyncThrowingStream<Any,Error>.Continuation) -> Void) {
             self.continuation = continuation
             self.block = block
-            super.init(tag: label)
+            super.init(label: label)
         }
     }
     
-    let label:String?
+    public let label:String?
     
     private var pendingTasksContinuation: AsyncStream<PendingTask>.Continuation?
     
@@ -36,7 +36,7 @@ public actor TaskQueue{
     
     private var scope: Task<Void,Never>?
     
-    func initPendingTasks()
+    private func initPendingTasks()
     {
         pendingTasks = AsyncStream{ continuation in
             pendingTasksContinuation = continuation
@@ -44,7 +44,7 @@ public actor TaskQueue{
         }
     }
     
-    func initScope()
+    private func initScope()
     {
         scope = Task{
             guard let pendingTasks = pendingTasks else { return }
@@ -95,13 +95,13 @@ public actor TaskQueue{
         }
     }
     
-    init(label: String? = nil) async{
+    public init(label: String? = nil) async{
         self.label = label ?? "TaskQueue"
         initPendingTasks()
         initScope()
     }
     
-    nonisolated func close()
+    public nonisolated func close()
     {
         Task{
             if let scope = await scope,
@@ -112,14 +112,14 @@ public actor TaskQueue{
         }
     }
     
-    nonisolated func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
+    public nonisolated func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
         Task{
             await pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
         }
     }
     
-    nonisolated func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
+    public nonisolated func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
     {
         return (try await withCheckedThrowingContinuation({ continuation in
             Task{
@@ -128,7 +128,7 @@ public actor TaskQueue{
         })) as! T
     }
     
-    nonisolated func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
+    public nonisolated func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
     {
         let anyStream = AsyncThrowingStream<Any,Error> { continuation in
             Task{
