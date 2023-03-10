@@ -28,20 +28,15 @@ let package = Package(
 ```swift
 import SwiftTaskQueue
 
-// Call from non-async context, without waiting for result
-func doSomething(taskQueue:TaskQueue)
-{
-    taskQueue.dispatch {
-        // your async code here
-    }
-}
+let taskQueue = TaskQueue()
 
+// Call from non-async context, without waiting for result
+taskQueue.dispatch {
+    // your async code here
+}
+    
 Task{
     
-    let taskQueue = await TaskQueue()
-    
-    doSomethong(taskQueue)
-
     // Call from async context, waiting for result
     let result = try? await taskQueue.dispatch {
         // your async code here
@@ -49,7 +44,7 @@ Task{
         return "result"
     }
 
-    // Create AsyncThrowingStream
+    // Create AsyncThrowingStream in the queue
     let stream = taskQueue.dispatchStream { continuation in
         // your stream builder here
         // ...
