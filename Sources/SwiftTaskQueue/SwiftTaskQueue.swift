@@ -42,7 +42,7 @@ public class TaskQueue{
     {
         pendingTasks = AsyncStream{ continuation in
             pendingTasksContinuation = continuation
-            print("pendingTasksContinuation initialized")
+//            print("pendingTasksContinuation initialized")
             initContinuation.resume()
         }
         scope = Task{
