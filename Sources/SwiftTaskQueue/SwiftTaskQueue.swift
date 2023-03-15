@@ -1,7 +1,7 @@
 public class TaskQueue{
     private class PendingTask{
         let label:String?
-        
+        var isCancelled = false
         init(label: String? = nil) {
             self.label = label
         }
@@ -51,6 +51,7 @@ public class TaskQueue{
             {
 //                print("PendingTask \(pendingTask.label ?? "") received", label ?? "")
                 if(Task.isCancelled){ break }
+                if(pendingTask.isCancelled) { continue }
                 if let task = pendingTask as? AsyncTask
                 {
                     do{
@@ -132,9 +133,20 @@ public class TaskQueue{
         {
             await initTask.value
         }
-        return (try await withCheckedThrowingContinuation({ continuation in
-            pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: continuation, block: block))
-        })) as! T
+        
+        var pendingTask : AsyncTask?
+        let cancel = {
+            pendingTask?.isCancelled = true
+        }
+        return try await withTaskCancellationHandler {
+            return (try await withCheckedThrowingContinuation({ continuation in
+                let task = AsyncTask(label: label, continuation: continuation, block: block)
+                pendingTask = task
+                pendingTasksContinuation?.yield(task)
+            })) as! T
+        } onCancel: {
+            cancel()
+        }
     }
     
     public func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
