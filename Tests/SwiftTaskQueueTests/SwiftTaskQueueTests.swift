@@ -178,7 +178,7 @@ final class SwiftTaskQueueTests: XCTestCase {
             }
         }
         
-        try? await Task.sleep(nanoseconds: 1000)
+        try? await Task.sleep(nanoseconds: 5000000000)
         try? await taskQueue.dispatch {
             print("ensure unwaited task1 is executed")
         }
