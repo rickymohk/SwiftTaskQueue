@@ -116,11 +116,12 @@ public class TaskQueue{
             //pendingTasks should be available since here
             if let pendingTasksContinuation = pendingTasksContinuation
             {
-                print("yield preInitPendingTasks \(preInitPendingTasks.count)")
+                print("yield preInitPendingTasks start \(preInitPendingTasks.count)")
                 for pendingTask in preInitPendingTasks
                 {
                     pendingTasksContinuation.yield(pendingTask)
                 }
+                print("yield preInitPendingTasks done \(preInitPendingTasks.count)")
             }
             else
             {
@@ -148,7 +149,9 @@ public class TaskQueue{
         }
         else
         {
+            print("appebd preInitPendingTasks start \(preInitPendingTasks.count)")
             preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
+            print("appebd preInitPendingTasks done \(preInitPendingTasks.count)")
 //            Task{
 //                await initTask.value
 //                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
