@@ -1,3 +1,5 @@
+import Foundation
+
 public class TaskQueue{
     private class PendingTask{
         let label:String?
@@ -35,6 +37,8 @@ public class TaskQueue{
     private var pendingTasks: AsyncStream<PendingTask>?
     
     private var scope: Task<Void,Never>?
+    
+    private let initTaskDispatchQueue = DispatchQueue(label: "initTask")
     
     private var initTask: Task<Void,Error>?
     
@@ -114,20 +118,25 @@ public class TaskQueue{
         initTask = Task{
             await withCheckedContinuation{ initScope(initContinuation: $0) }
             //pendingTasks should be available since here
-            if let pendingTasksContinuation = pendingTasksContinuation
-            {
-                print("yield preInitPendingTasks start \(preInitPendingTasks.count)")
-                for pendingTask in preInitPendingTasks
+//            print("initScope done. pendingTasksContinuation=\(pendingTasksContinuation)")
+            try initTaskDispatchQueue.sync {
+                if let pendingTasksContinuation = pendingTasksContinuation
                 {
-                    pendingTasksContinuation.yield(pendingTask)
+                    
+//                    print("yield preInitPendingTasks start \(preInitPendingTasks.count)")
+                    for pendingTask in preInitPendingTasks
+                    {
+                        pendingTasksContinuation.yield(pendingTask)
+                    }
+//                    print("yield preInitPendingTasks done \(preInitPendingTasks.count)")
+                    
                 }
-                print("yield preInitPendingTasks done \(preInitPendingTasks.count)")
+                else
+                {
+                    throw fatalError("pendingTasksContinuation not available after init")
+                }
             }
-            else
-            {
-                throw fatalError("pendingTasksContinuation not available after init")
-            }
-            
+//            print("initTask done")
             initTask = nil
         }
     }
@@ -143,20 +152,18 @@ public class TaskQueue{
     
     public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-        if let pendingTasksContinuation = pendingTasksContinuation
+        if initTask == nil, let pendingTasksContinuation = pendingTasksContinuation
         {
+//            print("yield directly \(label)")
             pendingTasksContinuation.yield(AsyncTask(label: label, continuation: nil, block: block))
         }
         else
         {
-            print("appebd preInitPendingTasks start \(preInitPendingTasks.count)")
-            preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
-            print("appebd preInitPendingTasks done \(preInitPendingTasks.count)")
-//            Task{
-//                await initTask.value
-//                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
-//            }
-            
+            initTaskDispatchQueue.sync {
+//                print("append preInitPendingTasks \(label) start \(preInitPendingTasks.count)")
+                preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
+//                print("append preInitPendingTasks \(label) done \(preInitPendingTasks.count)")
+            }
         }
     }
     

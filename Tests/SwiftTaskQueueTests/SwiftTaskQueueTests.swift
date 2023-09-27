@@ -19,16 +19,16 @@ final class SwiftTaskQueueTests: XCTestCase {
         let taskQueue = TaskQueue()
         
         ({
-            taskQueue.dispatch {
+            taskQueue.dispatch(label: "task1") {
                 await result.append("1")
             }
-            taskQueue.dispatch {
+            taskQueue.dispatch(label: "task2") {
                 await result.append("2")
             }
-            taskQueue.dispatch {
+            taskQueue.dispatch(label: "task3") {
                 await result.append("3")
             }
-            taskQueue.dispatch {
+            taskQueue.dispatch(label: "task4") {
                 await result.append("4")
             }
         }())
@@ -178,7 +178,7 @@ final class SwiftTaskQueueTests: XCTestCase {
             }
         }
         
-        try? await Task.sleep(nanoseconds: 5000000000)
+        try? await Task.sleep(nanoseconds: 1000000000)
         try? await taskQueue.dispatch {
             print("ensure unwaited task1 is executed")
         }
