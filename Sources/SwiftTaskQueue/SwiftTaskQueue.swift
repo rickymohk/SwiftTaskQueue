@@ -116,6 +116,7 @@ public class TaskQueue{
             //pendingTasks should be available since here
             if let pendingTasksContinuation = pendingTasksContinuation
             {
+                print("yield preInitPendingTasks \(preInitPendingTasks.count)")
                 for pendingTask in preInitPendingTasks
                 {
                     pendingTasksContinuation.yield(pendingTask)
