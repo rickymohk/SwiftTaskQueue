@@ -36,7 +36,7 @@ public class TaskQueue{
     
     private var scope: Task<Void,Never>?
     
-    private var initTask: Task<Void,Never>?
+    private var initTask: Task<Void,Error>?
     
     private var preInitPendingTasks: [PendingTask] = []
     
@@ -114,10 +114,18 @@ public class TaskQueue{
         initTask = Task{
             await withCheckedContinuation{ initScope(initContinuation: $0) }
             //pendingTasks should be available since here
-            for pendingTask in preInitPendingTasks
+            if let pendingTasksContinuation = pendingTasksContinuation
             {
-                pendingTasksContinuation?.yield(pendingTask)
+                for pendingTask in preInitPendingTasks
+                {
+                    pendingTasksContinuation.yield(pendingTask)
+                }
             }
+            else
+            {
+                throw fatalError("pendingTasksContinuation not available after init")
+            }
+            
             initTask = nil
         }
     }
@@ -133,17 +141,18 @@ public class TaskQueue{
     
     public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-        if let _ = initTask
+        if let pendingTasksContinuation = pendingTasksContinuation
+        {
+            pendingTasksContinuation.yield(AsyncTask(label: label, continuation: nil, block: block))
+        }
+        else
         {
             preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
 //            Task{
 //                await initTask.value
 //                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
 //            }
-        }
-        else
-        {
-            pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
+            
         }
     }
     
@@ -151,7 +160,7 @@ public class TaskQueue{
     {
         if let initTask = initTask
         {
-            await initTask.value
+            try await initTask.value
         }
         
         var pendingTask : AsyncTask?
@@ -194,7 +203,7 @@ public class TaskQueue{
             {
                 if let initTask = initTask
                 {
-                    await initTask.value
+                    try await initTask.value
                 }
                 do{
                     for try await element in anyStream
