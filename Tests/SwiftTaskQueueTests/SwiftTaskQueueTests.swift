@@ -1,30 +1,105 @@
 import XCTest
 @testable import SwiftTaskQueue
 
-actor TestResult{
-    var result : String = ""
-    var task2ret: String?
-    var task3ret: String?
-    var task4ret: String?
-    func append(_ result:String?)
-    {
-        self.result += result ?? ""
-    }
-    func task2(_ result:String?)
-    {
-        self.task2ret = result
-    }
-    func task3(_ result:String)
-    {
-        self.task3ret = result
-    }
-    func task4(_ result:String?)
-    {
-        self.task4ret = result
-    }
-}
 
 final class SwiftTaskQueueTests: XCTestCase {
+    
+
+    actor StringTestResult{
+        var result : String = ""
+        func append(_ result:String?)
+        {
+            self.result += result ?? ""
+        }
+    }
+    
+    func testPreInitTaskOrder() async throws
+    {
+        let result = StringTestResult()
+        let taskQueue = TaskQueue()
+        
+        ({
+            taskQueue.dispatch {
+                await result.append("1")
+            }
+            taskQueue.dispatch {
+                await result.append("2")
+            }
+            taskQueue.dispatch {
+                await result.append("3")
+            }
+            taskQueue.dispatch {
+                await result.append("4")
+            }
+        }())
+        try? await Task.sleep(nanoseconds: 1000000000)
+        let resultStr = await result.result
+        print(resultStr)
+        XCTAssertEqual(resultStr, "1234")
+    }
+    
+    func testCancellation() async throws
+    {
+        let result = StringTestResult()
+        let taskQueue = TaskQueue()
+        try await taskQueue.dispatch {
+            try? await Task.sleep(nanoseconds: 1000000000)
+            print("task1")
+            await result.append("1")
+        }
+        try await taskQueue.dispatch {
+            try? await Task.sleep(nanoseconds: 1000000000)
+            print("task2")
+            await result.append("2")
+        }
+        ({
+            taskQueue.dispatch {
+                try? await Task.sleep(nanoseconds: 1000000000)
+                print("task3")
+                await result.append("3")
+            }
+        }())
+        
+        ({
+            taskQueue.dispatch {
+                try? await Task.sleep(nanoseconds: 1000000000)
+                print("task4")
+                await result.append("4")
+            }
+        }())
+        
+        taskQueue.close()
+        
+        try? await Task.sleep(nanoseconds: 1000000000)
+        
+        let resultStr = await result.result
+        print(resultStr)
+        XCTAssertFalse(resultStr.contains("4"))
+    }
+    
+    
+    actor TestResult{
+        var result : String = ""
+        var task2ret: String?
+        var task3ret: String?
+        var task4ret: String?
+        func append(_ result:String?)
+        {
+            self.result += result ?? ""
+        }
+        func task2(_ result:String?)
+        {
+            self.task2ret = result
+        }
+        func task3(_ result:String)
+        {
+            self.task3ret = result
+        }
+        func task4(_ result:String?)
+        {
+            self.task4ret = result
+        }
+    }
     
     func testNonAsync(taskQueue:TaskQueue,testResult:TestResult)
     {

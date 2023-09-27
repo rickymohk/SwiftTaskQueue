@@ -38,6 +38,8 @@ public class TaskQueue{
     
     private var initTask: Task<Void,Never>?
     
+    private var preInitPendingTasks: [PendingTask] = []
+    
     private func initScope(initContinuation:CheckedContinuation<Void,Never>)
     {
         pendingTasks = AsyncStream{ continuation in
@@ -50,6 +52,7 @@ public class TaskQueue{
             for await pendingTask in pendingTasks
             {
 //                print("PendingTask \(pendingTask.label ?? "") received", label ?? "")
+                print("label: scope isCancelled \(Task.isCancelled)")
                 if(Task.isCancelled){ break }
                 if(pendingTask.isCancelled) { continue }
                 if let task = pendingTask as? AsyncTask
@@ -92,6 +95,17 @@ public class TaskQueue{
                 }
                 if(Task.isCancelled){ break }
             }
+            for await pendingTask in pendingTasks
+            {
+                if let task = pendingTask as? AsyncTask
+                {
+                    task.continuation?.resume(throwing: CancellationError())
+                }
+                else if let task = pendingTask as? StreamTask
+                {
+                    task.continuation.finish(throwing: CancellationError())
+                }
+            }
         }
     }
     
@@ -99,6 +113,11 @@ public class TaskQueue{
         self.label = label
         initTask = Task{
             await withCheckedContinuation{ initScope(initContinuation: $0) }
+            //pendingTasks should be available since here
+            for pendingTask in preInitPendingTasks
+            {
+                pendingTasksContinuation?.yield(pendingTask)
+            }
             initTask = nil
         }
     }
@@ -114,12 +133,13 @@ public class TaskQueue{
     
     public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-        if let initTask = initTask
+        if let _ = initTask
         {
-            Task{
-                await initTask.value
-                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
-            }
+            preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
+//            Task{
+//                await initTask.value
+//                pendingTasksContinuation?.yield(AsyncTask(label: label, continuation: nil, block: block))
+//            }
         }
         else
         {
