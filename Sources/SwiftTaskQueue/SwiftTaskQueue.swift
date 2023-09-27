@@ -52,7 +52,7 @@ public class TaskQueue{
             for await pendingTask in pendingTasks
             {
 //                print("PendingTask \(pendingTask.label ?? "") received", label ?? "")
-                print("label: scope isCancelled \(Task.isCancelled)")
+//                print("\(label ?? "TaskQueue"): scope isCancelled \(Task.isCancelled)")
                 if(Task.isCancelled){ break }
                 if(pendingTask.isCancelled) { continue }
                 if let task = pendingTask as? AsyncTask

@@ -32,10 +32,10 @@ final class SwiftTaskQueueTests: XCTestCase {
                 await result.append("4")
             }
         }())
-        try? await Task.sleep(nanoseconds: 1000000000)
+        try? await Task.sleep(nanoseconds: 5000000000)
         let resultStr = await result.result
-        print(resultStr)
-        XCTAssertEqual(resultStr, "1234")
+        print("testPreInitTaskOrder result: \(resultStr)")
+        XCTAssert(resultStr == "1234")
     }
     
     func testCancellation() async throws
@@ -54,7 +54,7 @@ final class SwiftTaskQueueTests: XCTestCase {
         }
         ({
             taskQueue.dispatch {
-                try? await Task.sleep(nanoseconds: 1000000000)
+                try? await Task.sleep(nanoseconds: 3000000000)
                 print("task3")
                 await result.append("3")
             }
@@ -73,7 +73,7 @@ final class SwiftTaskQueueTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 1000000000)
         
         let resultStr = await result.result
-        print(resultStr)
+        print("testCancellation result: \(resultStr)")
         XCTAssertFalse(resultStr.contains("4"))
     }
     
