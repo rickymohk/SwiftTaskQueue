@@ -77,6 +77,45 @@ final class SwiftTaskQueueTests: XCTestCase {
         XCTAssertFalse(resultStr.contains("4"))
     }
     
+    func testCloseWhileStreamTask() async throws{
+        print("testCloseWhileStreamTask start")
+        let taskQueue = TaskQueue()
+        let stream = taskQueue.dispatchStream(label: "task") { continuation in
+            print("\(Date()) dispatchStream start")
+            Task{
+                print("\(Date()) dispatchStream task start")
+                for i in 3..<10
+                {
+                    try? await Task.sleep(nanoseconds: 1000000000)
+                    print("\(Date()) dispatchStream task yield \(i)")
+                    continuation.yield(i)
+                }
+                continuation.finish()
+                print("\(Date()) dispatchStream task end")
+            }
+        }
+        print("testCloseWhileStreamTask do")
+        Task{
+            try? await Task.sleep(nanoseconds: 5000000000)
+            taskQueue.close()
+        }
+        var hasThrown = false
+        do{
+            var results : String = ""
+            for try await result in stream
+            {
+                print("task result \(result)")
+                results += "\(result)"
+            }
+            print("task result \(results)")
+        }
+        catch
+        {
+            print("task error \(error)")
+            hasThrown = true
+        }
+        XCTAssertTrue(hasThrown)
+    }
     
     actor TestResult{
         var result : String = ""

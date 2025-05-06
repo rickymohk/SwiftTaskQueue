@@ -32,32 +32,24 @@ public class TaskQueue{
     
     public let label:String?
     
-    private var pendingTasksContinuation: AsyncStream<PendingTask>.Continuation?
+    private var pendingTasksContinuation: AsyncStream<PendingTask>.Continuation
     
-    private var pendingTasks: AsyncStream<PendingTask>?
+    private var pendingTasks: AsyncStream<PendingTask>
     
     private var scope: Task<Void,Never>?
     
-    private let initTaskDispatchQueue = DispatchQueue(label: "initTask")
+    private var isScopeCancelled = false
     
-    private var initTask: Task<Void,Error>?
     
-    private var preInitPendingTasks: [PendingTask] = []
-    
-    private func initScope(initContinuation:CheckedContinuation<Void,Never>)
+    private func initScope()
     {
-        pendingTasks = AsyncStream{ continuation in
-            pendingTasksContinuation = continuation
-//            print("pendingTasksContinuation initialized")
-            initContinuation.resume()
-        }
         scope = Task{
-            guard let pendingTasks = pendingTasks else { return }
             for await pendingTask in pendingTasks
             {
 //                print("PendingTask \(pendingTask.label ?? "") received", label ?? "")
 //                print("\(label ?? "TaskQueue"): scope isCancelled \(Task.isCancelled)")
                 if(Task.isCancelled){ break }
+                if(isScopeCancelled){ break }
                 if(pendingTask.isCancelled) { continue }
                 if let task = pendingTask as? AsyncTask
                 {
@@ -80,6 +72,9 @@ public class TaskQueue{
 //                        print("StreamTask \(pendingTask.tag ?? "") start",source: tag)
                         for try await value in AsyncThrowingStream(Any.self, task.block)
                         {
+                            //check task cancelled
+//                            print("StreamTask cancelled=\(Task.isCancelled)")
+                            if(isScopeCancelled){ throw CancellationError() }
 //                            print("StreamTask \(pendingTask.tag ?? "") yield",source: tag)
                             task.continuation.yield(value)
                         }
@@ -88,6 +83,7 @@ public class TaskQueue{
                     }
                     catch
                     {
+//                        print("StreamTask error \(error)")
 //                        log.error("StreamTask \(pendingTask.tag ?? "") error \(error)",source: tag)
                         task.continuation.finish(throwing: error)
                     }
@@ -98,6 +94,7 @@ public class TaskQueue{
 //                    print("PendingTask discard \(pendingTask)", label ?? "")
                 }
                 if(Task.isCancelled){ break }
+                if(isScopeCancelled){ break }
             }
             for await pendingTask in pendingTasks
             {
@@ -115,65 +112,27 @@ public class TaskQueue{
     
     public init(label: String? = nil){
         self.label = label
-        initTask = Task{
-            await withCheckedContinuation{ initScope(initContinuation: $0) }
-            //pendingTasks should be available since here
-//            print("initScope done. pendingTasksContinuation=\(pendingTasksContinuation)")
-            try initTaskDispatchQueue.sync {
-                if let pendingTasksContinuation = pendingTasksContinuation
-                {
-                    
-//                    print("yield preInitPendingTasks start \(preInitPendingTasks.count)")
-                    for pendingTask in preInitPendingTasks
-                    {
-                        pendingTasksContinuation.yield(pendingTask)
-                    }
-//                    print("yield preInitPendingTasks done \(preInitPendingTasks.count)")
-                    
-                }
-                else
-                {
-                    throw fatalError("pendingTasksContinuation not available after init")
-                }
-            }
-//            print("initTask done")
-            initTask = nil
-        }
+        (pendingTasks,pendingTasksContinuation) = AsyncStream.makeStream()
+        initScope()
     }
     
     public func close()
     {
-        if let scope = scope,
-           !scope.isCancelled
+        if !isScopeCancelled
         {
-            scope.cancel()
+            isScopeCancelled = true
         }
     }
     
     public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-        if initTask == nil, let pendingTasksContinuation = pendingTasksContinuation
-        {
+
 //            print("yield directly \(label)")
-            pendingTasksContinuation.yield(AsyncTask(label: label, continuation: nil, block: block))
-        }
-        else
-        {
-            initTaskDispatchQueue.sync {
-//                print("append preInitPendingTasks \(label) start \(preInitPendingTasks.count)")
-                preInitPendingTasks.append(AsyncTask(label: label, continuation: nil, block: block))
-//                print("append preInitPendingTasks \(label) done \(preInitPendingTasks.count)")
-            }
-        }
+        pendingTasksContinuation.yield(AsyncTask(label: label, continuation: nil, block: block))
     }
     
     public func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
     {
-        if let initTask = initTask
-        {
-            try await initTask.value
-        }
-        
         var pendingTask : AsyncTask?
         let cancel = {
             pendingTask?.isCancelled = true
@@ -182,7 +141,7 @@ public class TaskQueue{
             return (try await withCheckedThrowingContinuation({ continuation in
                 let task = AsyncTask(label: label, continuation: continuation, block: block)
                 pendingTask = task
-                pendingTasksContinuation?.yield(task)
+                pendingTasksContinuation.yield(task)
             })) as! T
         } onCancel: {
             cancel()
@@ -192,7 +151,8 @@ public class TaskQueue{
     public func dispatchStream<T>( label:String?=nil, block:@escaping (AsyncThrowingStream<T,Error>.Continuation) -> Void) -> AsyncThrowingStream<T,Error>
     {
         let anyStream = AsyncThrowingStream<Any,Error> { continuation in
-            pendingTasksContinuation?.yield(StreamTask(label: label, continuation: continuation, block: { anyContinuation in
+            pendingTasksContinuation.yield(StreamTask(label: label, continuation: continuation, block: { anyContinuation in
+                
                 Task{
                     do
                     {
@@ -212,10 +172,6 @@ public class TaskQueue{
         return AsyncThrowingStream<T,Error> { typedContinuation in
             Task
             {
-                if let initTask = initTask
-                {
-                    try await initTask.value
-                }
                 do{
                     for try await element in anyStream
                     {
