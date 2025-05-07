@@ -1,6 +1,6 @@
 import Foundation
 
-public class TaskQueue{
+public class TaskQueue:Sendable {
     private class PendingTask{
         let label:String?
         var isCancelled = false
