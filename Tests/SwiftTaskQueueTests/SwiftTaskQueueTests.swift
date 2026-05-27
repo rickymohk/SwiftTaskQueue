@@ -169,16 +169,25 @@ final class SwiftTaskQueueTests: XCTestCase {
             return "task2result"
         }
 
-        // task2 must not have completed yet — task1 is still occupying the queue
+        // task3 is dispatched immediately after — must run after task2, not before
+        taskQueue.dispatch(label: "task3") {
+            await result.append("3")
+        }
+
+        // Neither task2 nor task3 should have completed yet — task1 is still occupying the queue
         let resultBeforeAwait = await result.result
         XCTAssertFalse(resultBeforeAwait.contains("2"), "task2 should not run before task1 finishes")
+        XCTAssertFalse(resultBeforeAwait.contains("3"), "task3 should not run before task1 finishes")
 
         let task2Result = try await pendingTask.value
+
+        // Wait for task3 to finish
+        try? await Task.sleep(nanoseconds: 100_000_000)
 
         let resultStr = await result.result
         print("testDispatchTask result: \(resultStr)")
         XCTAssertEqual(task2Result, "task2result")
-        XCTAssertEqual(resultStr, "12")
+        XCTAssertEqual(resultStr, "123")
     }
 
     func testExample() async throws {
