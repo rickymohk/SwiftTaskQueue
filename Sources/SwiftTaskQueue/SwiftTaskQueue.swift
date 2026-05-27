@@ -123,15 +123,13 @@ public class TaskQueue{
             isScopeCancelled = true
         }
     }
-    
+
     public func dispatch(label:String?=nil,block: @escaping () async throws -> Void)
     {
-
-//            print("yield directly \(label)")
         pendingTasksContinuation.yield(AsyncTask(label: label, continuation: nil, block: block))
     }
-    
-    public func dispatch<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
+
+    public func dispatchAndWait<T>(label:String?=nil,block: @escaping () async throws -> T) async throws -> T
     {
         var pendingTask : AsyncTask?
         let cancel = {
@@ -145,6 +143,25 @@ public class TaskQueue{
             })) as! T
         } onCancel: {
             cancel()
+        }
+    }
+
+    public func dispatchTask<T>(label:String?=nil,block: @escaping () async throws -> T) -> Task<T,Error>
+    {
+        var pendingTask : AsyncTask?
+        let cancel = {
+            pendingTask?.isCancelled = true
+        }
+        return Task {
+            return try await withTaskCancellationHandler {
+                return (try await withCheckedThrowingContinuation({ continuation in
+                    let task = AsyncTask(label: label, continuation: continuation, block: block)
+                    pendingTask = task
+                    pendingTasksContinuation.yield(task)
+                })) as! T
+            } onCancel: {
+                cancel()
+            }
         }
     }
     

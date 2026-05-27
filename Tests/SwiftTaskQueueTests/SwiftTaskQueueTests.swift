@@ -42,12 +42,12 @@ final class SwiftTaskQueueTests: XCTestCase {
     {
         let result = StringTestResult()
         let taskQueue = TaskQueue()
-        try await taskQueue.dispatch {
+        try await taskQueue.dispatchAndWait {
             try? await Task.sleep(nanoseconds: 1000000000)
             print("task1")
             await result.append("1")
         }
-        try await taskQueue.dispatch {
+        try await taskQueue.dispatchAndWait {
             try? await Task.sleep(nanoseconds: 1000000000)
             print("task2")
             await result.append("2")
@@ -152,6 +152,35 @@ final class SwiftTaskQueueTests: XCTestCase {
         }
     }
     
+    func testDispatchTask() async throws
+    {
+        let result = StringTestResult()
+        let taskQueue = TaskQueue()
+
+        // Enqueue a slow task first to verify ordering is preserved
+        taskQueue.dispatch(label: "task1") {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await result.append("1")
+        }
+
+        // dispatchTask enqueues task2 and returns a Task handle without suspending
+        let pendingTask = taskQueue.dispatchTask(label: "task2") {
+            await result.append("2")
+            return "task2result"
+        }
+
+        // task2 must not have completed yet — task1 is still occupying the queue
+        let resultBeforeAwait = await result.result
+        XCTAssertFalse(resultBeforeAwait.contains("2"), "task2 should not run before task1 finishes")
+
+        let task2Result = try await pendingTask.value
+
+        let resultStr = await result.result
+        print("testDispatchTask result: \(resultStr)")
+        XCTAssertEqual(task2Result, "task2result")
+        XCTAssertEqual(resultStr, "12")
+    }
+
     func testExample() async throws {
         // This is an example of a functional test case.
         // Use XCTAssert and related functions to verify your tests produce the correct
@@ -163,7 +192,7 @@ final class SwiftTaskQueueTests: XCTestCase {
         await withTaskGroup(of: Void.self) { taskGroup in
             taskGroup.addTask {
                 print("dispatch task2")
-                let result = try? await taskQueue.dispatch(label: "task2") {
+                let result = try? await taskQueue.dispatchAndWait(label: "task2") {
                     await testResult.append("<2")
                     print("\(Date()) task2 start")
                     try? await Task.sleep(nanoseconds: 1000000000)
@@ -205,7 +234,7 @@ final class SwiftTaskQueueTests: XCTestCase {
             }
             taskGroup.addTask {
                 print("dispatch task4")
-                let result = try? await taskQueue.dispatch(label: "task4") {
+                let result = try? await taskQueue.dispatchAndWait(label: "task4") {
                     await testResult.append("<4")
                     print("\(Date()) task4 start")
                     try? await Task.sleep(nanoseconds: 1000000000)
@@ -218,7 +247,7 @@ final class SwiftTaskQueueTests: XCTestCase {
         }
         
         try? await Task.sleep(nanoseconds: 1000000000)
-        try? await taskQueue.dispatch {
+        try? await taskQueue.dispatchAndWait {
             print("ensure unwaited task1 is executed")
         }
         
